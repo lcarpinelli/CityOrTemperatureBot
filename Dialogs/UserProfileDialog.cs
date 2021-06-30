@@ -68,7 +68,12 @@ namespace DialogBot
             }
             else
             {
-                if (model.Name == null)
+                if(model.Id == null)
+                {
+                    model.Id = stepContext.Context.Activity.From.Id;
+                    model.Name = stepContext.Context.Activity.Text;
+                }
+                else if (!model.Id.Equals(stepContext.Context.Activity.From.Id))
                 {
                     model.Name = stepContext.Context.Activity.Text;
                 }
@@ -77,24 +82,14 @@ namespace DialogBot
         }
         private static async Task<DialogTurnResult> CityOrTemp(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-           model.Request = (string)stepContext.Result;
-
-            return await stepContext.PromptAsync(nameof(ChoicePrompt),
-                new PromptOptions
-                {
-                    Prompt = MessageFactory.Text("Vuoi sapere la temperatura o le coordinate città?"),
-                    Choices = ChoiceFactory.ToChoices(new List<string> { "Temperatura", "Coordinate" }),
-                }, cancellationToken);
-        }
-        private static async Task<DialogTurnResult> GetCityOrTemp(WaterfallStepContext stepContext, CancellationToken cancellationToken)
-        {
-            model.Choice = ((FoundChoice)stepContext.Result).Value;
+            model.Request = (string)stepContext.Result;
+            model.IsValid = false;
 
             HttpClient client = new HttpClient();
-            string url = "http://api.openweathermap.org/data/2.5/weather?q="+model.Request + ",IT&appid=c649e81366b62803db5824367c4da223&units=metric&zip";
+            string url = "http://api.openweathermap.org/data/2.5/weather?q=" + model.Request + ",IT&appid=c649e81366b62803db5824367c4da223&units=metric&zip";
 
-            HttpResponseMessage response = await client.GetAsync(url);
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            model.Response = await client.GetAsync(url);
+            if (model.Response.StatusCode != System.Net.HttpStatusCode.OK)
             {
                 return await stepContext.PromptAsync(nameof(ChoicePrompt),
                     new PromptOptions
@@ -105,7 +100,23 @@ namespace DialogBot
             }
             else
             {
-                string r = response.Content.ReadAsStringAsync().Result;
+                model.IsValid = true;
+                return await stepContext.PromptAsync(nameof(ChoicePrompt),
+                new PromptOptions
+                {
+                    Prompt = MessageFactory.Text("Vuoi sapere la temperatura o le coordinate città?"),
+                    Choices = ChoiceFactory.ToChoices(new List<string> { "Temperatura", "Coordinate" }),
+                }, cancellationToken);
+            }
+
+        }
+        private static async Task<DialogTurnResult> GetCityOrTemp(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        {
+            if (model.IsValid)
+            {
+                model.Choice = ((FoundChoice)stepContext.Result).Value;
+
+                string r = model.Response.Content.ReadAsStringAsync().Result;
                 JObject j = JObject.Parse(r);
                 model.City = j.SelectToken("name").ToString();
 
@@ -116,7 +127,7 @@ namespace DialogBot
                     return await stepContext.PromptAsync(nameof(ChoicePrompt),
                     new PromptOptions
                     {
-                        Prompt = MessageFactory.Text("Le coordinate di "+model.City+" sono Longitudine: " + model.Lon +" Latitudine: " + model.Lat),
+                        Prompt = MessageFactory.Text("Le coordinate di " + model.City + " sono Longitudine: " + model.Lon + " Latitudine: " + model.Lat),
                         Choices = ChoiceFactory.ToChoices(new List<string> { "Restart", "End" }),
                     }, cancellationToken);
                 }
@@ -126,12 +137,18 @@ namespace DialogBot
                     return await stepContext.PromptAsync(nameof(ChoicePrompt),
                     new PromptOptions
                     {
-                        Prompt = MessageFactory.Text("A "+model.City+" La temperatura è di " + model.Temp + "°C"),
+                        Prompt = MessageFactory.Text("A " + model.City + " La temperatura è di " + model.Temp + "°C"),
                         Choices = ChoiceFactory.ToChoices(new List<string> { "Restart", "End" }),
                     }, cancellationToken);
 
                 }
             }
+            else
+            {
+                model.Final = ((FoundChoice)stepContext.Result).Value;
+                return await Restart(stepContext, cancellationToken);
+            }
+
         }
         private static async Task<DialogTurnResult> Restart(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
@@ -143,6 +160,7 @@ namespace DialogBot
             }
             else
             {
+                await stepContext.CancelAllDialogsAsync(cancellationToken);
                 return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text("Grazie e Buona Giornata!") }, cancellationToken);
             }
         }

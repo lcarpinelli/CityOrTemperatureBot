@@ -64,7 +64,7 @@ namespace DialogBot
             if (stepContext.Context.Activity.ChannelId.Equals(Microsoft.Bot.Connector.Channels.Telegram))
             {
                 var data = stepContext.Context.Activity.ChannelData as dynamic;
-                return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text("Ciao " + data?.message?.from?.first_name + ", Inserisci il tuo CAP.") }, cancellationToken);
+                return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text("Ciao " + data?.message?.from?.first_name + ", Inserisci il nome della città.") }, cancellationToken);
             }
             else
             {
@@ -72,18 +72,18 @@ namespace DialogBot
                 {
                     model.Name = stepContext.Context.Activity.Text;
                 }
-                return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text("Ciao " + model.Name + ", Inserisci il tuo CAP.") }, cancellationToken);
+                return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text("Ciao " + model.Name + ", Inserisci il nome della città.") }, cancellationToken);
             }
         }
         private static async Task<DialogTurnResult> CityOrTemp(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-           model.Cap = (string)stepContext.Result;
+           model.Request = (string)stepContext.Result;
 
             return await stepContext.PromptAsync(nameof(ChoicePrompt),
                 new PromptOptions
                 {
-                    Prompt = MessageFactory.Text("Vuoi sapere la temperatura o il nome della città?"),
-                    Choices = ChoiceFactory.ToChoices(new List<string> { "Nome", "Temperatura" }),
+                    Prompt = MessageFactory.Text("Vuoi sapere la temperatura o le coordinate città?"),
+                    Choices = ChoiceFactory.ToChoices(new List<string> { "Temperatura", "Coordinate" }),
                 }, cancellationToken);
         }
         private static async Task<DialogTurnResult> GetCityOrTemp(WaterfallStepContext stepContext, CancellationToken cancellationToken)
@@ -91,7 +91,7 @@ namespace DialogBot
             model.Choice = ((FoundChoice)stepContext.Result).Value;
 
             HttpClient client = new HttpClient();
-            string url = $"http://api.openweathermap.org/data/2.5/weather?zip=" + model.Cap + ",IT&appid=c649e81366b62803db5824367c4da223&units=metric";
+            string url = "http://api.openweathermap.org/data/2.5/weather?q="+model.Request + ",IT&appid=c649e81366b62803db5824367c4da223&units=metric&zip";
 
             HttpResponseMessage response = await client.GetAsync(url);
             if (response.StatusCode != System.Net.HttpStatusCode.OK)
@@ -99,7 +99,7 @@ namespace DialogBot
                 return await stepContext.PromptAsync(nameof(ChoicePrompt),
                     new PromptOptions
                     {
-                        Prompt = MessageFactory.Text("Questo CAP è errato"),
+                        Prompt = MessageFactory.Text("Questa città è errata"),
                         Choices = ChoiceFactory.ToChoices(new List<string> { "Restart", "End" }),
                     }, cancellationToken);
             }
@@ -107,13 +107,16 @@ namespace DialogBot
             {
                 string r = response.Content.ReadAsStringAsync().Result;
                 JObject j = JObject.Parse(r);
-                if (model.Choice.Equals("Nome"))
+                model.City = j.SelectToken("name").ToString();
+
+                if (model.Choice.Equals("Coordinate"))
                 {
-                    model.City = j.SelectToken("name").ToString();
+                    model.Lon = j.SelectToken("coord").SelectToken("lon").ToString();
+                    model.Lat = j.SelectToken("coord").SelectToken("lat").ToString();
                     return await stepContext.PromptAsync(nameof(ChoicePrompt),
                     new PromptOptions
                     {
-                        Prompt = MessageFactory.Text("Your city is " + model.City),
+                        Prompt = MessageFactory.Text("Le coordinate di "+model.City+" sono Longitudine: " + model.Lon +" Latitudine: " + model.Lat),
                         Choices = ChoiceFactory.ToChoices(new List<string> { "Restart", "End" }),
                     }, cancellationToken);
                 }
@@ -123,7 +126,7 @@ namespace DialogBot
                     return await stepContext.PromptAsync(nameof(ChoicePrompt),
                     new PromptOptions
                     {
-                        Prompt = MessageFactory.Text("La temperatura è di " + model.Temp + "°C"),
+                        Prompt = MessageFactory.Text("A "+model.City+" La temperatura è di " + model.Temp + "°C"),
                         Choices = ChoiceFactory.ToChoices(new List<string> { "Restart", "End" }),
                     }, cancellationToken);
 

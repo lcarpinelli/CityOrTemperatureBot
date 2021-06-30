@@ -9,10 +9,12 @@ namespace DialogBot.Models
     {
         public string Final { get; set; }
         public string Name { get; set; }
-        public string Cap { get; set; }
+        public string Request { get; set; }
         public string Choice { get; set; }
         public string City { get; set; }
         public string Temp { get; set; }
+        public string Lon { get; set; }
+        public string Lat { get; set; }
 
     }
 }

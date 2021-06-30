@@ -61,8 +61,19 @@ namespace DialogBot
 
         private static async Task<DialogTurnResult> AskCity(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-
-            return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text("Ciao, Inserisci il tuo CAP.") }, cancellationToken);
+            if (stepContext.Context.Activity.ChannelId.Equals(Microsoft.Bot.Connector.Channels.Telegram))
+            {
+                var data = stepContext.Context.Activity.ChannelData as dynamic;
+                return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text("Ciao " + data?.message?.from?.first_name + ", Inserisci il tuo CAP.") }, cancellationToken);
+            }
+            else
+            {
+                if (model.Name == null)
+                {
+                    model.Name = stepContext.Context.Activity.Text;
+                }
+                return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text("Ciao " + model.Name + ", Inserisci il tuo CAP.") }, cancellationToken);
+            }
         }
         private static async Task<DialogTurnResult> CityOrTemp(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
@@ -88,7 +99,7 @@ namespace DialogBot
                 return await stepContext.PromptAsync(nameof(ChoicePrompt),
                     new PromptOptions
                     {
-                        Prompt = MessageFactory.Text("This CAP is Wrong"),
+                        Prompt = MessageFactory.Text("Questo CAP è errato"),
                         Choices = ChoiceFactory.ToChoices(new List<string> { "Restart", "End" }),
                     }, cancellationToken);
             }

@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.ServiceModel.Syndication;
 using System.Threading;
 using System.Threading.Tasks;
 using DialogBot.Models;
@@ -68,7 +69,8 @@ namespace DialogBot
             }
             else
             {
-                if(model.Id == null)
+
+                if (model.Id == null)
                 {
                     model.Id = stepContext.Context.Activity.From.Id;
                     model.Name = stepContext.Context.Activity.Text;
@@ -160,6 +162,7 @@ namespace DialogBot
             }
             else
             {
+                
                 await stepContext.CancelAllDialogsAsync(cancellationToken);
                 return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text("Grazie e Buona Giornata!") }, cancellationToken);
             }

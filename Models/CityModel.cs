@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace DialogBot.Models
 {
-    public class UserModel
+    public class CityModel
     {
         public string Final { get; set; }
         public string Name { get; set; }

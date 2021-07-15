@@ -1,7 +1,9 @@
-﻿using Microsoft.Bot.Builder;
+﻿using DialogBot.Models;
+using Microsoft.Bot.Builder;
 using Microsoft.Bot.Builder.Dialogs;
 using Microsoft.Bot.Builder.Dialogs.Choices;
 using Microsoft.Bot.Schema;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
@@ -15,27 +17,16 @@ namespace DialogBot.Dialogs
     public class SecurityDialog : ComponentDialog
     {
         private readonly IStatePropertyAccessor<UserProfile> _userProfileAccessor;
+        static CovidModel model = new CovidModel();
 
-        public SecurityDialog()
-            : base(nameof(SecurityDialog))
+        public SecurityDialog() : base(nameof(SecurityDialog))
         {
-
             // This array defines how the Waterfall will execute.
             var waterfallSteps = new WaterfallStep[]
             {
-                //Città o temperatura con CAP
-                AskCity,
-                CityOrTemp,
-                GetCityOrTemp
-
-                //Dialogo
-                //TransportStepAsync,
-                //NameStepAsync,
-                //NameConfirmStepAsync,
-                //AgeStepAsync,
-                //PictureStepAsync,
-                //ConfirmStepAsync,
-                //SummaryStepAsync,
+                Welcome,
+                GetData,
+                Restart
             };
 
             // Aggiungi finestre di dialogo con nome al DialogSet. Questi nomi vengono salvati nello stato della finestra di dialogo.
@@ -48,51 +39,86 @@ namespace DialogBot.Dialogs
             InitialDialogId = nameof(WaterfallDialog);
         }
 
-        //Città o temperatura con CAP
-        private static async Task<DialogTurnResult> AskCity(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        private static async Task<DialogTurnResult> Welcome(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-
-            return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text("Sei in difficoltà?") }, cancellationToken);
-        }
-        private static async Task<DialogTurnResult> CityOrTemp(WaterfallStepContext stepContext, CancellationToken cancellationToken)
-        {
-            stepContext.Values["cap"] = (string)stepContext.Result;
-
-            return await stepContext.PromptAsync(nameof(ChoicePrompt),
-                new PromptOptions
-                {
-                    Prompt = MessageFactory.Text("Vuoi sapere la temperatura o il nome della città?"),
-                    Choices = ChoiceFactory.ToChoices(new List<string> { "Nome", "Temperatura" }),
-                }, cancellationToken);
-        }
-        private static async Task<DialogTurnResult> GetCityOrTemp(WaterfallStepContext stepContext, CancellationToken cancellationToken)
-        {
-            string choice = ((FoundChoice)stepContext.Result).Value;
-
-            HttpClient client = new HttpClient();
-            string url = $"http://api.openweathermap.org/data/2.5/weather?zip=" + stepContext.Values["cap"] + ",IT&appid=c649e81366b62803db5824367c4da223&units=metric";
-
-            HttpResponseMessage response = await client.GetAsync(url);
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            if (stepContext.Context.Activity.ChannelId.Equals(Microsoft.Bot.Connector.Channels.Telegram))
             {
-                return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text("This CAP is Wrong") }, cancellationToken);
+                var data = stepContext.Context.Activity.ChannelData as dynamic;
+                return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text("Ciao " + data?.message?.from?.first_name + ", Inserisci la data (mm-gg-yyyy) del giorno che vuoi visionare") }, cancellationToken);
             }
             else
             {
-                string r = response.Content.ReadAsStringAsync().Result;
-                JObject j = JObject.Parse(r);
-                if (choice.Equals("Nome"))
+                if (model.Id == null)
                 {
-                    string city = j.SelectToken("name").ToString();
-                                   
-                    return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text("Your city is " + city) }, cancellationToken); 
+                    model.Id = stepContext.Context.Activity.From.Id;
+                    model.Name = stepContext.Context.Activity.Text;
                 }
-                else
+                else if (!model.Id.Equals(stepContext.Context.Activity.From.Id))
                 {
-                    string temp = j.SelectToken("main").SelectToken("temp").ToString();
-                    return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text("La temperatura è di " + temp + "°C") }, cancellationToken);
+                    model.Name = stepContext.Context.Activity.Text;
                 }
+                return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text("Ciao " + model.Name + ", Inserisci la data (mm-gg-yyyy) del giorno che vuoi visionare.") }, cancellationToken);
             }
         }
+        private static async Task<DialogTurnResult> GetData(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        {
+            model.Day = (string)stepContext.Result;
+
+            HttpClient client = new HttpClient();
+            string url = "http://raw.githubusercontent.com/pcm-dpc/COVID-19/master/dati-json/dpc-covid19-ita-andamento-nazionale.json";
+            model.Response =  await client.GetAsync(url);
+
+            string result = await model.Response.Content.ReadAsStringAsync();
+            var Days = JsonConvert.DeserializeObject<ICollection<DayModel>>(result);
+
+            try
+            {
+                var day = DateTime.Parse(model.Day);
+
+                foreach (var x in Days)
+                {
+                    if (x.Date.Value.ToString("d") == day.ToString("d"))
+                    {
+                        model.Deceduti = x.Deaths;
+                        model.Positivi = x.TotalPositives;
+                        break;
+                    }
+                }
+
+                return await stepContext.PromptAsync(nameof(ChoicePrompt),
+                   new PromptOptions
+                   {
+                       Prompt = MessageFactory.Text($"Data: {model.Day}, Deceduti: {model.Deceduti}, Attualmente Positivi: { model.Positivi}"),
+                       Choices = ChoiceFactory.ToChoices(new List<string> { "Restart", "End" }),
+                   }, cancellationToken);
+
+            }
+            catch (Exception e)
+            {
+                return await stepContext.PromptAsync(nameof(ChoicePrompt),
+                 new PromptOptions
+                 {
+                     Prompt = MessageFactory.Text("Data Errata"),
+                     Choices = ChoiceFactory.ToChoices(new List<string> { "Restart", "End" }),
+                 }, cancellationToken);
+            }
+
+        }
+
+        private static async Task<DialogTurnResult> Restart(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        {
+            model.Restart = ((FoundChoice)stepContext.Result).Value;
+
+            if (model.Restart == "Restart")
+            {
+                return await stepContext.ReplaceDialogAsync("WaterfallDialog");
+            }
+            else
+            {
+                await stepContext.CancelAllDialogsAsync(cancellationToken);
+                return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text("Grazie e Buona Giornata!") }, cancellationToken);
+            }
+        }
+
     }
 }

@@ -21,7 +21,7 @@ namespace DialogBot
     {
         private readonly IStatePropertyAccessor<UserProfile> _userProfileAccessor;
 
-        static UserModel model = new UserModel();
+        static CityModel model = new CityModel();
 
         public UserProfileDialog()
             : base(nameof(UserProfileDialog))
@@ -69,7 +69,6 @@ namespace DialogBot
             }
             else
             {
-
                 if (model.Id == null)
                 {
                     model.Id = stepContext.Context.Activity.From.Id;
@@ -162,9 +161,8 @@ namespace DialogBot
             }
             else
             {
-                
                 await stepContext.CancelAllDialogsAsync(cancellationToken);
-                return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text("Grazie e Buona Giornata!") }, cancellationToken);
+                return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text("Grazie e Buona Giornata!")}, cancellationToken);
             }
         }
 
